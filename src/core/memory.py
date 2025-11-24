@@ -42,7 +42,35 @@ def get_state_path(username: Optional[str] = None) -> Path:
 
 
 def load_state(username: Optional[str] = None) -> RLState:
-    """Load RL state from JSON file (user-specific if username provided)"""
+    """Load RL state - tries database first, falls back to JSON file"""
+    # Try database first (if available)
+    if username:
+        try:
+            from .database import load_rl_state
+            db_state = load_rl_state(username)
+            if db_state:
+                # Ensure all modes are present
+                modes = ["quiz", "flashcard", "interactive"]
+                for mode in modes:
+                    if mode not in db_state.get("mode_alpha", {}):
+                        db_state.setdefault("mode_alpha", {})[mode] = 1.0
+                    if mode not in db_state.get("mode_beta", {}):
+                        db_state.setdefault("mode_beta", {})[mode] = 1.0
+                
+                # Ensure chunk_performance exists
+                if "chunk_performance" not in db_state:
+                    db_state["chunk_performance"] = {}
+                
+                # Ensure file_mapping exists
+                if "file_mapping" not in db_state:
+                    db_state["file_mapping"] = {}
+                
+                return RLState(**db_state)
+        except Exception as e:
+            from .logger import logger
+            logger.get_logger().debug(f"Database not available, using file storage: {e}")
+    
+    # Fallback to JSON file
     state_path = get_state_path(username)
     
     if not state_path.exists():
@@ -98,7 +126,19 @@ def load_state(username: Optional[str] = None) -> RLState:
 
 
 def save_state(state: RLState, username: Optional[str] = None) -> bool:
-    """Save RL state to JSON file (user-specific if username provided)"""
+    """Save RL state - tries database first, falls back to JSON file"""
+    # Try database first (if available and username provided)
+    if username:
+        try:
+            from .database import save_rl_state
+            data = asdict(state)
+            if save_rl_state(username, data):
+                return True
+        except Exception as e:
+            from .logger import logger
+            logger.get_logger().debug(f"Database not available, using file storage: {e}")
+    
+    # Fallback to JSON file
     state_path = get_state_path(username)
     
     try:
