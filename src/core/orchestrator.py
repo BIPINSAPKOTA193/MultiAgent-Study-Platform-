@@ -48,3 +48,40 @@ class ManagerAgent:
     except Exception as e:
       self.logger.exception(f"Error handling command {command.action}")
       return {"success": False, "error": str(e)}
+
+    async def handle_command_async(self, command: ManagerCommand) -> Dict[str, Any]:
+      """Handle a manager command asynchronously (for parallel agent calls)"""
+      # Future enhancement: use asyncio.gather for parallel operations
+      return self.handle_command(command)
+    
+    def _handle_extract(self, params: Dict[str, Any]) -> Dict[str, Any]:
+      """Route extraction request to NLP Agent"""
+      from ..agents.nlp_agent import NLPAgent
+      
+      nlp_agent = NLPAgent()
+      # Remove session_id from params as ExtractionRequest doesn't accept it
+      extract_params = {k: v for k, v in params.items() if k in ['file_path', 'file_content', 'file_type']}
+      request = ExtractionRequest(**extract_params)
+      response = nlp_agent.extract(request)
+      
+      # Store in session context
+      session_id = params.get("session_id")
+      self.logger.info(f"Extract handler - session_id: {session_id}, chunks count: {len(response.chunks) if response.chunks else 0}")
+      
+      if session_id:
+          self.session_context[session_id] = {
+              "chunks": response.chunks,
+              "summary": response.summary
+          }
+          self.logger.info(f"Stored {len(response.chunks)} chunks in session {session_id} (total {sum(len(c) for c in response.chunks)} chars)")
+          self.logger.info(f"Session context keys: {list(self.session_context.keys())}")
+      else:
+          self.logger.warning("No session_id provided in extract params, chunks will not be stored in session context")
+      
+      return {
+          "success": response.success,
+          "chunks": response.chunks,
+          "summary": response.summary,
+          "error": response.error
+      }
+
