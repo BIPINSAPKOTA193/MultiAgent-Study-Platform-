@@ -52,6 +52,7 @@ if "manager" not in st.session_state or st.session_state.get("username") != st.s
 # Load theme CSS if available
 theme_css_path = Path(__file__).parent / "theme.css"
 if theme_css_path.exists():
+  
     with open(theme_css_path, 'r') as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
