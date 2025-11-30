@@ -843,7 +843,7 @@ def main():
                         if not st.session_state.extracted_chunks:
                             st.error("⚠️ No valid content chunks extracted. Please try a different file.")
                         else:
-                            # Auto-generate content based on preference
+                        # Auto-generate content based on preference
                             if survey_completed:
                                 # If preference is "I don't know", always show mixed bundle
                                 if preference == LearningMode.UNKNOWN.value:
@@ -1004,7 +1004,6 @@ def main():
                             display_filename = f"File {file_hash[:8]}..."
                     else:
                         # Show just the filename, truncate if too long
-                        from pathlib import Path
                         display_filename = Path(display_filename).name
                         if len(display_filename) > 40:
                             display_filename = display_filename[:37] + "..."

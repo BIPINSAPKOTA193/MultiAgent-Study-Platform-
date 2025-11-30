@@ -43,6 +43,20 @@ def get_supabase_client() -> Optional[Any]:
         if not supabase_url or not supabase_key:
             return None
         
+        # Convert PostgreSQL URL to API URL if needed
+        if supabase_url.startswith("postgresql://"):
+            # Extract project reference from PostgreSQL URL
+            # Format: postgresql://postgres:password@db.PROJECT_REF.supabase.co:5432/postgres
+            import re
+            match = re.search(r'@db\.([^.]+)\.supabase\.co', supabase_url)
+            if match:
+                project_ref = match.group(1)
+                supabase_url = f"https://{project_ref}.supabase.co"
+                logger.get_logger().info(f"Converted PostgreSQL URL to API URL: {supabase_url}")
+            else:
+                logger.get_logger().warning("Could not extract project reference from PostgreSQL URL")
+                return None
+        
         client = create_client(supabase_url, supabase_key)
         return client
     except Exception as e:
