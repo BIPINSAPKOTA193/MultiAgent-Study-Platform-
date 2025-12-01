@@ -740,16 +740,55 @@ Always return valid JSON. NEVER hallucinate or add external knowledge. Better to
         
         # Generate all three in parallel
         self.logger.info("Starting parallel generation of quiz, flashcards, and interactive content...")
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            # Submit all three tasks
-            quiz_future = executor.submit(self.generate_quiz, quiz_request)
-            flashcard_future = executor.submit(self.generate_flashcards, flashcard_request)
-            interactive_future = executor.submit(self.generate_interactive, interactive_request)
-            
-            # Wait for all to complete and get results
-            quiz_response = quiz_future.result()
-            flashcard_response = flashcard_future.result()
-            interactive_response = interactive_future.result()
+        try:
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                # Submit all three tasks
+                quiz_future = executor.submit(self.generate_quiz, quiz_request)
+                flashcard_future = executor.submit(self.generate_flashcards, flashcard_request)
+                interactive_future = executor.submit(self.generate_interactive, interactive_request)
+                
+                # Wait for all to complete and get results
+                try:
+                    quiz_response = quiz_future.result(timeout=120)  # 2 minute timeout per task
+                except Exception as e:
+                    self.logger.error(f"Quiz generation failed with exception: {e}")
+                    quiz_response = GenerationResponse(
+                        content_type=ContentType.QUIZ,
+                        data={},
+                        success=False,
+                        error=f"Exception: {str(e)}"
+                    )
+                
+                try:
+                    flashcard_response = flashcard_future.result(timeout=120)
+                except Exception as e:
+                    self.logger.error(f"Flashcard generation failed with exception: {e}")
+                    flashcard_response = GenerationResponse(
+                        content_type=ContentType.FLASHCARD,
+                        data={},
+                        success=False,
+                        error=f"Exception: {str(e)}"
+                    )
+                
+                try:
+                    interactive_response = interactive_future.result(timeout=120)
+                except Exception as e:
+                    self.logger.error(f"Interactive generation failed with exception: {e}")
+                    interactive_response = GenerationResponse(
+                        content_type=ContentType.INTERACTIVE,
+                        data={},
+                        success=False,
+                        error=f"Exception: {str(e)}"
+                    )
+        except Exception as e:
+            self.logger.exception(f"Critical error in parallel generation: {e}")
+            # Return error response
+            return GenerationResponse(
+                content_type=ContentType.MIXED,
+                data={},
+                success=False,
+                error=f"Critical error during generation: {str(e)}"
+            )
         
         self.logger.info("Parallel generation completed")
         
