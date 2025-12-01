@@ -461,3 +461,5 @@ class ManagerAgent:
             f"count={feedback_context['feedback_count']}"
         )
         
+        return feedback_context
+

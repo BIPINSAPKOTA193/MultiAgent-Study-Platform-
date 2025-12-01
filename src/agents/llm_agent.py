@@ -18,14 +18,32 @@ class LLMAgent:
     
     def __init__(self):
         self.logger = logger.get_logger()
-        api_key = os.getenv("OPENAI_API_KEY")
-        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        
+        # Try to get from Streamlit secrets first (for Streamlit Cloud)
+        api_key = None
+        model = "gpt-4o-mini"
+        
+        try:
+            import streamlit as st
+            secrets = st.secrets
+            api_key = secrets.get("OPENAI_API_KEY")
+            model = secrets.get("OPENAI_MODEL", "gpt-4o-mini")
+        except (ImportError, AttributeError, KeyError, FileNotFoundError, RuntimeError):
+            # Streamlit not available or secrets not configured
+            pass
+        
+        # Fall back to environment variables
+        if not api_key:
+            api_key = os.getenv("OPENAI_API_KEY")
+        if not model or model == "gpt-4o-mini":
+            model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         
         if not api_key:
-            raise ValueError("OPENAI_API_KEY not found in environment variables")
+            raise ValueError("OPENAI_API_KEY not found in Streamlit secrets or environment variables. Please configure it in Streamlit Cloud secrets or .env file.")
         
         self.client = OpenAI(api_key=api_key)
         self.model = model
+        self.logger.info(f"LLM Agent initialized with model: {self.model}")
     
     def generate(self, request: GenerationRequest) -> GenerationResponse:
         """
@@ -659,6 +677,17 @@ Always return valid JSON. NEVER hallucinate or add external knowledge. Better to
     
     def generate_mixed_bundle(self, request: GenerationRequest) -> GenerationResponse:
         """Generate all three content types for mixed bundle"""
+        # Validate chunks first
+        chunks = request.chunks or []
+        if not chunks or all(not chunk.strip() for chunk in chunks):
+            self.logger.error("No valid chunks provided for mixed bundle generation")
+            return GenerationResponse(
+                content_type=ContentType.MIXED,
+                data={},
+                success=False,
+                error="No content chunks available. Please ensure the PDF was properly extracted."
+            )
+        
         # For mixed bundle, we need to extract feedback context for each type
         # If feedback_context is provided and has a general context, use it
         # Otherwise, each type will use its own feedback history (handled in orchestrator)
@@ -711,16 +740,55 @@ Always return valid JSON. NEVER hallucinate or add external knowledge. Better to
         
         # Generate all three in parallel
         self.logger.info("Starting parallel generation of quiz, flashcards, and interactive content...")
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            # Submit all three tasks
-            quiz_future = executor.submit(self.generate_quiz, quiz_request)
-            flashcard_future = executor.submit(self.generate_flashcards, flashcard_request)
-            interactive_future = executor.submit(self.generate_interactive, interactive_request)
-            
-            # Wait for all to complete and get results
-            quiz_response = quiz_future.result()
-            flashcard_response = flashcard_future.result()
-            interactive_response = interactive_future.result()
+        try:
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                # Submit all three tasks
+                quiz_future = executor.submit(self.generate_quiz, quiz_request)
+                flashcard_future = executor.submit(self.generate_flashcards, flashcard_request)
+                interactive_future = executor.submit(self.generate_interactive, interactive_request)
+                
+                # Wait for all to complete and get results
+                try:
+                    quiz_response = quiz_future.result(timeout=120)  # 2 minute timeout per task
+                except Exception as e:
+                    self.logger.error(f"Quiz generation failed with exception: {e}")
+                    quiz_response = GenerationResponse(
+                        content_type=ContentType.QUIZ,
+                        data={},
+                        success=False,
+                        error=f"Exception: {str(e)}"
+                    )
+                
+                try:
+                    flashcard_response = flashcard_future.result(timeout=120)
+                except Exception as e:
+                    self.logger.error(f"Flashcard generation failed with exception: {e}")
+                    flashcard_response = GenerationResponse(
+                        content_type=ContentType.FLASHCARD,
+                        data={},
+                        success=False,
+                        error=f"Exception: {str(e)}"
+                    )
+                
+                try:
+                    interactive_response = interactive_future.result(timeout=120)
+                except Exception as e:
+                    self.logger.error(f"Interactive generation failed with exception: {e}")
+                    interactive_response = GenerationResponse(
+                        content_type=ContentType.INTERACTIVE,
+                        data={},
+                        success=False,
+                        error=f"Exception: {str(e)}"
+                    )
+        except Exception as e:
+            self.logger.exception(f"Critical error in parallel generation: {e}")
+            # Return error response
+            return GenerationResponse(
+                content_type=ContentType.MIXED,
+                data={},
+                success=False,
+                error=f"Critical error during generation: {str(e)}"
+            )
         
         self.logger.info("Parallel generation completed")
         
@@ -745,9 +813,32 @@ Always return valid JSON. NEVER hallucinate or add external knowledge. Better to
             f"interactive={'✓' if (interactive_response.success and interactive_response.data) else '✗'}"
         )
         
+        # Build detailed error message
+        errors = []
+        if not (quiz_response.success and quiz_response.data):
+            quiz_error = quiz_response.error or 'Failed to generate'
+            errors.append(f"Quiz: {quiz_error}")
+            self.logger.error(f"Quiz generation failed: {quiz_error}")
+        if not (flashcard_response.success and flashcard_response.data):
+            flashcard_error = flashcard_response.error or 'Failed to generate'
+            errors.append(f"Flashcards: {flashcard_error}")
+            self.logger.error(f"Flashcard generation failed: {flashcard_error}")
+        if not (interactive_response.success and interactive_response.data):
+            interactive_error = interactive_response.error or 'Failed to generate'
+            errors.append(f"Interactive: {interactive_error}")
+            self.logger.error(f"Interactive generation failed: {interactive_error}")
+        
+        # Always provide detailed error message if any failed
+        if errors:
+            error_msg = f"Failed to generate: {', '.join(errors)}"
+            self.logger.error(f"Mixed bundle generation failed. Details: {error_msg}")
+        else:
+            error_msg = None
+        
         return GenerationResponse(
             content_type=ContentType.MIXED,
             data=data,
             success=success,
-            error=None if success else "Some content types failed to generate"
+            error=error_msg
         )
+

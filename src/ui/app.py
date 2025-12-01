@@ -52,7 +52,6 @@ if "manager" not in st.session_state or st.session_state.get("username") != st.s
 # Load theme CSS if available
 theme_css_path = Path(__file__).parent / "theme.css"
 if theme_css_path.exists():
-  
     with open(theme_css_path, 'r') as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
@@ -844,7 +843,7 @@ def main():
                         if not st.session_state.extracted_chunks:
                             st.error("⚠️ No valid content chunks extracted. Please try a different file.")
                         else:
-                            # Auto-generate content based on preference
+                        # Auto-generate content based on preference
                             if survey_completed:
                                 # If preference is "I don't know", always show mixed bundle
                                 if preference == LearningMode.UNKNOWN.value:
@@ -913,19 +912,19 @@ def main():
                 st.rerun()
             return
         
-        # Verify state file exists and can be loaded
-        from src.core.memory import get_state_path
-        state_path = get_state_path(username)
-        if not state_path.exists():
-            st.warning(f"⚠️ No state file found for user '{username}'. Your analytics data will appear once you start answering questions.")
-        else:
-            # Try to load state to verify it's accessible
-            try:
-                test_state = load_state(username)
-                if not hasattr(test_state, 'chunk_performance') or not test_state.chunk_performance:
-                    st.info("ℹ️ No analytics data recorded yet. Start answering questions to see your progress!")
-            except Exception as e:
-                st.error(f"❌ Error loading state: {e}")
+        # Try to load state (checks Supabase first, then fallback)
+        try:
+            test_state = load_state(username)
+            if not hasattr(test_state, 'chunk_performance') or not test_state.chunk_performance:
+                st.info("ℹ️ No analytics data recorded yet. Start answering questions to see your progress!")
+        except Exception as e:
+            # Check if it's a Supabase connection issue
+            from src.core.supabase_client import get_supabase_client
+            client = get_supabase_client()
+            if client is None:
+                st.warning("⚠️ Supabase connection not configured. Analytics data will be stored locally.")
+            else:
+                st.warning(f"⚠️ Could not load analytics data. Error: {e}")
         
         summary = get_performance_summary(username)
         
@@ -1005,7 +1004,6 @@ def main():
                             display_filename = f"File {file_hash[:8]}..."
                     else:
                         # Show just the filename, truncate if too long
-                        from pathlib import Path
                         display_filename = Path(display_filename).name
                         if len(display_filename) > 40:
                             display_filename = display_filename[:37] + "..."
@@ -1265,7 +1263,27 @@ def generate_content_for_mode(mode: str):
             st.session_state.current_mode = mode
             st.rerun()
         else:
-            st.error(f"Error generating content: {result.get('error')}")
+            error_msg = result.get('error', 'Unknown error')
+            st.error(f"❌ Error generating content: {error_msg}")
+            
+            # Show helpful troubleshooting tips
+            if "OPENAI_API_KEY" in error_msg or "API key" in error_msg.lower():
+                st.info("💡 **Tip**: Make sure your OpenAI API key is configured in Streamlit Cloud secrets (Settings → Secrets)")
+            elif "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower() or "429" in error_msg:
+                st.error("⚠️ **OpenAI Quota Exceeded**: Your OpenAI API key has exceeded its quota or billing limit.")
+                st.info("""
+                **To fix this:**
+                1. Go to [OpenAI Platform](https://platform.openai.com/account/billing)
+                2. Check your usage and billing details
+                3. Add payment method or upgrade your plan if needed
+                4. Wait a few minutes for the quota to reset (if on a free tier)
+                
+                **Alternative**: You can use a different OpenAI API key with available quota.
+                """)
+            elif "rate limit" in error_msg.lower():
+                st.info("💡 **Tip**: You may have hit OpenAI API rate limits. Please check your OpenAI account usage and wait a moment before trying again.")
+            elif "timeout" in error_msg.lower() or "network" in error_msg.lower():
+                st.info("💡 **Tip**: Network timeout occurred. Please try again.")
 
 
 def generate_mixed_bundle():
@@ -1320,7 +1338,27 @@ def generate_mixed_bundle():
             st.session_state.current_mode = "mixed"
             st.rerun()
         else:
-            st.error(f"Error generating content: {result.get('error')}")
+            error_msg = result.get('error', 'Unknown error')
+            st.error(f"❌ Error generating content: {error_msg}")
+            
+            # Show helpful troubleshooting tips
+            if "OPENAI_API_KEY" in error_msg or "API key" in error_msg.lower():
+                st.info("💡 **Tip**: Make sure your OpenAI API key is configured in Streamlit Cloud secrets (Settings → Secrets)")
+            elif "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower() or "429" in error_msg:
+                st.error("⚠️ **OpenAI Quota Exceeded**: Your OpenAI API key has exceeded its quota or billing limit.")
+                st.info("""
+                **To fix this:**
+                1. Go to [OpenAI Platform](https://platform.openai.com/account/billing)
+                2. Check your usage and billing details
+                3. Add payment method or upgrade your plan if needed
+                4. Wait a few minutes for the quota to reset (if on a free tier)
+                
+                **Alternative**: You can use a different OpenAI API key with available quota.
+                """)
+            elif "rate limit" in error_msg.lower():
+                st.info("💡 **Tip**: You may have hit OpenAI API rate limits. Please check your OpenAI account usage and wait a moment before trying again.")
+            elif "timeout" in error_msg.lower() or "network" in error_msg.lower():
+                st.info("💡 **Tip**: Network timeout occurred. Please try again.")
 
 
 if __name__ == "__main__":
