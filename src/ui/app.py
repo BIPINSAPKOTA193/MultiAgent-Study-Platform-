@@ -405,7 +405,7 @@ def render_interactive_content(data: Dict[str, Any]):
     # Title with stars display
     col_title, col_stars = st.columns([3, 1])
     with col_title:
-        st.markdown(f"# 🎯 {title}")
+    st.markdown(f"# 🎯 {title}")
     with col_stars:
         stars_display = "⭐" * min(5, st.session_state.interactive_stars)
         st.markdown(f"""
@@ -850,9 +850,9 @@ def main():
                                     generate_mixed_bundle()
                                 else:
                                     # For specific preferences, use that mode
-                                    generate_content_for_mode(preference)
-                            else:
-                                generate_mixed_bundle()
+                            generate_content_for_mode(preference)
+                        else:
+                            generate_mixed_bundle()
                     else:
                         st.error(f"Error: {extract_result.get('error')}")
                     
@@ -877,7 +877,7 @@ def main():
         st.markdown("---")
         if st.button("📊 View Analytics Dashboard", use_container_width=True):
             st.session_state.show_analytics = True
-            st.rerun()
+                st.rerun()
         
         # Show logs
         with st.expander("📋 View Logs"):
@@ -1263,7 +1263,16 @@ def generate_content_for_mode(mode: str):
             st.session_state.current_mode = mode
             st.rerun()
         else:
-            st.error(f"Error generating content: {result.get('error')}")
+            error_msg = result.get('error', 'Unknown error')
+            st.error(f"❌ Error generating content: {error_msg}")
+            
+            # Show helpful troubleshooting tips
+            if "OPENAI_API_KEY" in error_msg or "API key" in error_msg.lower():
+                st.info("💡 **Tip**: Make sure your OpenAI API key is configured in Streamlit Cloud secrets (Settings → Secrets)")
+            elif "rate limit" in error_msg.lower() or "quota" in error_msg.lower():
+                st.info("💡 **Tip**: You may have hit OpenAI API rate limits. Please check your OpenAI account usage.")
+            elif "timeout" in error_msg.lower() or "network" in error_msg.lower():
+                st.info("💡 **Tip**: Network timeout occurred. Please try again.")
 
 
 def generate_mixed_bundle():
@@ -1318,7 +1327,16 @@ def generate_mixed_bundle():
             st.session_state.current_mode = "mixed"
             st.rerun()
         else:
-            st.error(f"Error generating content: {result.get('error')}")
+            error_msg = result.get('error', 'Unknown error')
+            st.error(f"❌ Error generating content: {error_msg}")
+            
+            # Show helpful troubleshooting tips
+            if "OPENAI_API_KEY" in error_msg or "API key" in error_msg.lower():
+                st.info("💡 **Tip**: Make sure your OpenAI API key is configured in Streamlit Cloud secrets (Settings → Secrets)")
+            elif "rate limit" in error_msg.lower() or "quota" in error_msg.lower():
+                st.info("💡 **Tip**: You may have hit OpenAI API rate limits. Please check your OpenAI account usage.")
+            elif "timeout" in error_msg.lower() or "network" in error_msg.lower():
+                st.info("💡 **Tip**: Network timeout occurred. Please try again.")
 
 
 if __name__ == "__main__":
